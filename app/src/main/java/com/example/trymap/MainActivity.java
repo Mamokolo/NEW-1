@@ -99,7 +99,8 @@ public class MainActivity extends AppCompatActivity implements GoogleMap.OnMapCl
     private GoogleMap mMap;
     public UiSettings mUiSettings;
     public EditText address_dest, address_origin;
-    private Button speedtest,end_direction;
+    public String origin;
+    private Button speedtest, end_direction;
     private TextToSpeech tts;
     private LinearLayout layout;
 //    private Location location;
@@ -140,7 +141,7 @@ public class MainActivity extends AppCompatActivity implements GoogleMap.OnMapCl
         address_dest = (EditText) findViewById(R.id.addr_dest);
         Button enter = findViewById(R.id.enter);
         Button accidentB = findViewById(R.id.accident);
-        layout = (LinearLayout)findViewById(R.id.linearlayout);
+        layout = (LinearLayout) findViewById(R.id.linearlayout);
         end_direction = findViewById(R.id.end_direction);
         end_direction.setOnClickListener(new View.OnClickListener() {
             @Override
@@ -148,11 +149,12 @@ public class MainActivity extends AppCompatActivity implements GoogleMap.OnMapCl
                 layout.setVisibility(View.VISIBLE);
                 end_direction.setVisibility(View.GONE);
                 mMap.clear();
+                getgeocode();
+                getSpeed();
             }
         });
 
-        address_origin.setHint("出發地");
-        address_dest.setHint("目的地");
+
         SupportMapFragment mapFragment = (SupportMapFragment) getSupportFragmentManager().findFragmentById(R.id.map2);
         assert mapFragment != null;
         mapFragment.getMapAsync(this);
@@ -173,15 +175,25 @@ public class MainActivity extends AppCompatActivity implements GoogleMap.OnMapCl
     public void onMapReady(GoogleMap googlemap) {
 
         this.mMap = googlemap;
-//        mMap.setMapType(GoogleMap.MAP_TYPE_HYBRID);
+        mMap.setMapType(GoogleMap.MAP_TYPE_HYBRID);
 
 //        Taipei = mMap.addMarker(new MarkerOptions().position(Taiwan).title("Marker").draggable(true));
         getgeocode();
-        getspeed();
+        getSpeed();
 
         address_origin.setText("現在位置");
-        address_dest.setText("中壢車站");
+        address_dest.setText("目的地");
         if (checkPermissions()) {
+            if (ActivityCompat.checkSelfPermission(this, Manifest.permission.ACCESS_FINE_LOCATION) != PackageManager.PERMISSION_GRANTED && ActivityCompat.checkSelfPermission(this, Manifest.permission.ACCESS_COARSE_LOCATION) != PackageManager.PERMISSION_GRANTED) {
+                // TODO: Consider calling
+                //    ActivityCompat#requestPermissions
+                // here to request the missing permissions, and then overriding
+                //   public void onRequestPermissionsResult(int requestCode, String[] permissions,
+                //                                          int[] grantResults)
+                // to handle the case where the user grants the permission. See the documentation
+                // for ActivityCompat#requestPermissions for more details.
+                return;
+            }
             googlemap.setMyLocationEnabled(true);
             init(googlemap);
 //            if (checkSelfPermission(Manifest.permission.ACCESS_FINE_LOCATION) != PackageManager.PERMISSION_GRANTED && checkSelfPermission(Manifest.permission.ACCESS_COARSE_LOCATION) != PackageManager.PERMISSION_GRANTED) {
@@ -324,7 +336,7 @@ public class MainActivity extends AppCompatActivity implements GoogleMap.OnMapCl
         }
     }
 
-    void getspeed() {
+    void getSpeed() {
 
         for (int i = 0; i < 113; i++) {
             Geocoder geoCoder = new Geocoder(this, Locale.getDefault());
@@ -371,7 +383,7 @@ public class MainActivity extends AppCompatActivity implements GoogleMap.OnMapCl
     }
 
 
-    public void ButtonClick(View view) {
+    public void ButtonClick(View view) throws IOException {
 
         if (mMap == null) {
             return;
@@ -384,24 +396,34 @@ public class MainActivity extends AppCompatActivity implements GoogleMap.OnMapCl
                 dialog.dismiss();
             }
         }, 1500);
-        String origin = address_origin.getText().toString();
+        origin = address_origin.getText().toString();
         String dest = address_dest.getText().toString();
-        String location_Now = String.valueOf((double) location.getLatitude()) + "," + String.valueOf((double)location.getLongitude());
+        //String location_Now = String.valueOf((double) location.getLatitude()) + "," + String.valueOf((double)location.getLongitude());
         if(origin.equals("現在位置")){
-           origin = location_Now;
+            Geocoder geoCoder = new Geocoder(this, Locale.getDefault());
+            List<Address> lstAddress = geoCoder.getFromLocation((double) location.getLatitude(), (double)location.getLongitude(), 1);
+            String returnAddress=lstAddress.get(0).getAddressLine(0);
+            origin = returnAddress;
+            System.out.println("進來啦!");
+            System.out.println(origin);
         }
-        String url = getDirectionsUrl(origin, dest);
+        if(!dest.equals("目的地")){
 
-        DownloadTask downloadTask = new DownloadTask();
-        //Start downloading json data from Google Directions
-        //API
-        downloadTask.execute(url);
+            System.out.println(origin);
+            String url = getDirectionsUrl(origin, dest);
+            DownloadTask downloadTask = new DownloadTask();
+            //Start downloading json data from Google Directions
+            //API
+            downloadTask.execute(url);
 
-        layout.setVisibility(View.GONE);
-        end_direction.setVisibility(View.VISIBLE);
-        is_direction = true;
+            layout.setVisibility(View.GONE);
+            end_direction.setVisibility(View.VISIBLE);
+            is_direction = true;
+        }
+
+
+
     }
-
 
     public void AccidentClick(View view){
         if(Accident.get(0).isVisible()==false){
@@ -411,15 +433,15 @@ public class MainActivity extends AppCompatActivity implements GoogleMap.OnMapCl
             for(int i=0;i<18;i++)Accident.get(i).setVisible(false);
     }
 
-     public void SpeedClick(View view){
-         if(Photo.get(0).isVisible()==false){
-             for(int i=0;i<113;i++)Photo.get(i).setVisible(true);
-         }
-         else
-             for(int i=0;i<113;i++)Photo.get(i).setVisible(false);
-     }
+    public void SpeedClick(View view){
+        if(Photo.get(0).isVisible()==false){
+            for(int i=0;i<113;i++)Photo.get(i).setVisible(true);
+        }
+        else
+            for(int i=0;i<113;i++)Photo.get(i).setVisible(false);
+    }
 
-     @RequiresApi(api = Build.VERSION_CODES.N)
+     /*@RequiresApi(api = Build.VERSION_CODES.N)
      public void SituationClick(View view) {
          for(int i=0;i<4;i++){
              StrictMode.ThreadPolicy policy = new StrictMode.ThreadPolicy.Builder().permitAll().build();
@@ -504,7 +526,7 @@ public class MainActivity extends AppCompatActivity implements GoogleMap.OnMapCl
                  e.printStackTrace();
              }
          }
-    }
+    }*/
 
     @RequiresApi(api = Build.VERSION_CODES.N)
     public static String getServerTime() {
@@ -737,8 +759,10 @@ public class MainActivity extends AppCompatActivity implements GoogleMap.OnMapCl
         locationManager = (LocationManager) getSystemService(Context.LOCATION_SERVICE);
 
         List<String> providerList = locationManager.getProviders(true);
+        System.out.println();
         if (providerList.contains(LocationManager.GPS_PROVIDER)) {
             provider = LocationManager.GPS_PROVIDER;
+            System.out.println(origin);
         } else if (providerList.contains(LocationManager.NETWORK_PROVIDER)) {
             provider = LocationManager.NETWORK_PROVIDER;
         } else {
@@ -777,7 +801,7 @@ public class MainActivity extends AppCompatActivity implements GoogleMap.OnMapCl
         @Override
         public void onLocationChanged(Location location) {
             if(is_direction){
-                String origin = String.valueOf((double) location.getLatitude()) + "," + String.valueOf((double)location.getLongitude());
+                origin = String.valueOf((double) location.getLatitude()) + "," + String.valueOf((double)location.getLongitude());
                 String dest = address_dest.getText().toString();
                 String url = getDirectionsUrl(origin, dest);
                 mMap.clear();
