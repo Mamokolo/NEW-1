@@ -399,7 +399,18 @@ public class MainActivity extends AppCompatActivity implements GoogleMap.OnMapCl
         origin = address_origin.getText().toString();
         String dest = address_dest.getText().toString();
         //String location_Now = String.valueOf((double) location.getLatitude()) + "," + String.valueOf((double)location.getLongitude());
-        if(origin.equals("現在位置")){
+        if (origin.equals("現在位置")) {
+            if (ActivityCompat.checkSelfPermission(this, Manifest.permission.ACCESS_FINE_LOCATION) != PackageManager.PERMISSION_GRANTED && ActivityCompat.checkSelfPermission(this, Manifest.permission.ACCESS_COARSE_LOCATION) != PackageManager.PERMISSION_GRANTED) {
+                // TODO: Consider calling
+                //    ActivityCompat#requestPermissions
+                // here to request the missing permissions, and then overriding
+                //   public void onRequestPermissionsResult(int requestCode, String[] permissions,
+                //                                          int[] grantResults)
+                // to handle the case where the user grants the permission. See the documentation
+                // for ActivityCompat#requestPermissions for more details.
+                return;
+            }
+            location = locationManager.getLastKnownLocation(provider);
             Geocoder geoCoder = new Geocoder(this, Locale.getDefault());
             List<Address> lstAddress = geoCoder.getFromLocation((double) location.getLatitude(), (double)location.getLongitude(), 1);
             String returnAddress=lstAddress.get(0).getAddressLine(0);
