@@ -16,19 +16,23 @@
 
 package com.example.trymap;
 
+import com.google.android.gms.maps.CameraUpdate;
 import com.google.android.gms.maps.CameraUpdateFactory;
 import com.google.android.gms.maps.GoogleMap;
 import com.google.android.gms.maps.OnMapReadyCallback;
 import com.google.android.gms.maps.SupportMapFragment;
 import com.google.android.gms.maps.model.BitmapDescriptorFactory;
+import com.google.android.gms.maps.model.CameraPosition;
 import com.google.android.gms.maps.model.LatLng;
 import com.google.android.gms.maps.model.Marker;
 import com.google.android.gms.maps.model.MarkerOptions;
 //ui import
 import android.Manifest;
+import android.app.AlertDialog;
 import android.app.Dialog;
 import android.app.ProgressDialog;
 import android.content.Context;
+import android.content.DialogInterface;
 import android.content.pm.PackageManager;
 import android.graphics.Color;
 import android.hardware.Sensor;
@@ -149,7 +153,7 @@ public class MainActivity extends AppCompatActivity implements GoogleMap.OnMapCl
                 layout.setVisibility(View.VISIBLE);
                 end_direction.setVisibility(View.GONE);
                 mMap.clear();
-                getgeocode();
+                getAccident();
                 getSpeed();
             }
         });
@@ -176,11 +180,8 @@ public class MainActivity extends AppCompatActivity implements GoogleMap.OnMapCl
 
         this.mMap = googlemap;
         mMap.setMapType(GoogleMap.MAP_TYPE_HYBRID);
-
-//        Taipei = mMap.addMarker(new MarkerOptions().position(Taiwan).title("Marker").draggable(true));
-        getgeocode();
+        getAccident();
         getSpeed();
-
         address_origin.setText("現在位置");
         address_dest.setText("目的地");
         if (checkPermissions()) {
@@ -196,9 +197,6 @@ public class MainActivity extends AppCompatActivity implements GoogleMap.OnMapCl
             }
             googlemap.setMyLocationEnabled(true);
             init(googlemap);
-//            if (checkSelfPermission(Manifest.permission.ACCESS_FINE_LOCATION) != PackageManager.PERMISSION_GRANTED && checkSelfPermission(Manifest.permission.ACCESS_COARSE_LOCATION) != PackageManager.PERMISSION_GRANTED) {
-//                return;
-//            }
 
         }
 
@@ -212,6 +210,8 @@ public class MainActivity extends AppCompatActivity implements GoogleMap.OnMapCl
         mMap.getUiSettings().setZoomGesturesEnabled(true);
         mMap.getUiSettings().setTiltGesturesEnabled(true);
         mMap.getUiSettings().setRotateGesturesEnabled(true);
+        mMap.getUiSettings().isZoomControlsEnabled();
+
     }
 
     @Override
@@ -265,8 +265,35 @@ public class MainActivity extends AppCompatActivity implements GoogleMap.OnMapCl
         if (mSpeed >= SPEED_SHRESHOLD) {
             //達到搖一搖甩動後要做的事
             tts.speak("震動注意", TextToSpeech.QUEUE_FLUSH, null);//發音
+            alertInit();
+            try {
+                Thread.sleep(3000);
+            } catch (InterruptedException e) {
+                e.printStackTrace();
+            }
+
         }
 
+    }
+
+    public void alertInit() {
+        AlertDialog.Builder alertDialog = new AlertDialog.Builder(MainActivity.this);
+        alertDialog.setTitle("警告");
+        alertDialog.setMessage("路面顛頗!!");
+        alertDialog.setPositiveButton("確定", ((dialog, which) -> {
+        }));
+        AlertDialog dialog = alertDialog.create();
+        dialog.show();
+        dialog.getButton(AlertDialog.BUTTON_NEGATIVE).setOnClickListener((v -> {
+            setToast("確定");
+            dialog.dismiss();
+        }));
+        dialog.setCancelable(false);
+        dialog.setCanceledOnTouchOutside(true);
+
+    }
+
+    private void setToast(String confirm) {
     }
 
     /**
@@ -293,13 +320,13 @@ public class MainActivity extends AppCompatActivity implements GoogleMap.OnMapCl
     @Override
     public void onMapClick(LatLng point) {
 
-//        Geocoder geocoder = new Geocoder(this, Locale.getDefault());
-//        try {
-//            List<Address> ADDR = geocoder.getFromLocation(point.latitude, point.longitude, 1);
-//            getAddress(ADDR);
-//        } catch (IOException e) {
-//            e.printStackTrace();
-//        }
+       Geocoder geocoder = new Geocoder(this, Locale.getDefault());
+       try {
+            List<Address> ADDR = geocoder.getFromLocation(point.latitude, point.longitude, 1);
+            getAddress(ADDR);
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
     }
 
     String getAddress(List<Address> ADDR) {
@@ -318,7 +345,7 @@ public class MainActivity extends AppCompatActivity implements GoogleMap.OnMapCl
         return null;
     }
 
-    void getgeocode() {
+    void getAccident() {
 
         for (int i = 0; i < 18; i++) {
             Geocoder geoCoder = new Geocoder(this, Locale.getDefault());
@@ -339,7 +366,6 @@ public class MainActivity extends AppCompatActivity implements GoogleMap.OnMapCl
     void getSpeed() {
 
         for (int i = 0; i < 113; i++) {
-            Geocoder geoCoder = new Geocoder(this, Locale.getDefault());
             double photoposx, photoposy;
             photoposx = Double.parseDouble(getResources().getStringArray(R.array.lat)[i]);
             photoposy = Double.parseDouble(getResources().getStringArray(R.array.lng)[i]);
@@ -398,7 +424,7 @@ public class MainActivity extends AppCompatActivity implements GoogleMap.OnMapCl
         }, 1500);
         origin = address_origin.getText().toString();
         String dest = address_dest.getText().toString();
-        //String location_Now = String.valueOf((double) location.getLatitude()) + "," + String.valueOf((double)location.getLongitude());
+
         if (origin.equals("現在位置")) {
             if (ActivityCompat.checkSelfPermission(this, Manifest.permission.ACCESS_FINE_LOCATION) != PackageManager.PERMISSION_GRANTED && ActivityCompat.checkSelfPermission(this, Manifest.permission.ACCESS_COARSE_LOCATION) != PackageManager.PERMISSION_GRANTED) {
                 // TODO: Consider calling
@@ -412,61 +438,72 @@ public class MainActivity extends AppCompatActivity implements GoogleMap.OnMapCl
             }
             location = locationManager.getLastKnownLocation(provider);
             Geocoder geoCoder = new Geocoder(this, Locale.getDefault());
-            List<Address> lstAddress = geoCoder.getFromLocation((double) location.getLatitude(), (double)location.getLongitude(), 1);
-            String returnAddress=lstAddress.get(0).getAddressLine(0);
+            List<Address> lstAddress = geoCoder.getFromLocation((double) location.getLatitude(), (double) location.getLongitude(), 1);
+            String returnAddress = lstAddress.get(0).getAddressLine(0);
             origin = returnAddress;
-            System.out.println("進來啦!");
-            System.out.println(origin);
+            LatLng currentLoc = new LatLng(location.getLatitude(),location.getLongitude());
+            //System.out.println("進來啦!");
+            //System.out.println(origin);
+            if (!dest.equals("目的地")) {
+                System.out.println(origin);
+                String url = getDirectionsUrl(origin, dest);
+                DownloadTask downloadTask = new DownloadTask();
+                //Start downloading json data from Google Directions
+                //API
+                downloadTask.execute(url);
+                layout.setVisibility(View.GONE);
+                end_direction.setVisibility(View.VISIBLE);
+                is_direction = true;
+                CameraPosition cameraPosition = new CameraPosition.Builder().target(currentLoc).zoom(17).build();
+                mMap.animateCamera(CameraUpdateFactory.newCameraPosition(cameraPosition));
+            }
         }
-        if(!dest.equals("目的地")){
-
+        else if (!dest.equals("目的地")) {
+            Geocoder geoCoder = new Geocoder(this, Locale.getDefault());
+            List<Address> currentLoc = geoCoder.getFromLocationName(origin, 1);
             System.out.println(origin);
             String url = getDirectionsUrl(origin, dest);
             DownloadTask downloadTask = new DownloadTask();
             //Start downloading json data from Google Directions
             //API
             downloadTask.execute(url);
-
             layout.setVisibility(View.GONE);
             end_direction.setVisibility(View.VISIBLE);
             is_direction = true;
+            LatLng CP = new LatLng(currentLoc.get(0).getLatitude(),currentLoc.get(0).getLongitude());
+            CameraPosition cameraPosition = new CameraPosition.Builder().target(CP).zoom(17).build();
+            mMap.animateCamera(CameraUpdateFactory.newCameraPosition(cameraPosition));
         }
-
 
 
     }
-
-    public void AccidentClick(View view){
-        if(Accident.get(0).isVisible()==false){
-            for(int i=0;i<18;i++)Accident.get(i).setVisible(true);
-        }
-        else
-            for(int i=0;i<18;i++)Accident.get(i).setVisible(false);
+    //易肇事路段顯示隱藏
+    public void AccidentClick(View view) {
+        if (Accident.get(0).isVisible() == false) {
+            for (int i = 0; i < 18; i++) Accident.get(i).setVisible(true);
+        } else
+            for (int i = 0; i < 18; i++) Accident.get(i).setVisible(false);
     }
-
-    public void SpeedClick(View view){
-        if(Photo.get(0).isVisible()==false){
-            for(int i=0;i<113;i++)Photo.get(i).setVisible(true);
-        }
-        else
-            for(int i=0;i<113;i++)Photo.get(i).setVisible(false);
+    //測速照相位置顯示隱藏
+    public void SpeedClick(View view) {
+        if (Photo.get(0).isVisible() == false) {
+            for (int i = 0; i < 113; i++) Photo.get(i).setVisible(true);
+        } else
+            for (int i = 0; i < 113; i++) Photo.get(i).setVisible(false);
     }
 
      /*@RequiresApi(api = Build.VERSION_CODES.N)
      public void SituationClick(View view) {
-         for(int i=0;i<4;i++){
              StrictMode.ThreadPolicy policy = new StrictMode.ThreadPolicy.Builder().permitAll().build();
              StrictMode.setThreadPolicy(policy);
              HttpURLConnection connection = null;
-             String APIUrl =
-                     "https://traffic.transportdata.tw/MOTC/v1/Road/Traffic/Road/Taoyuan?$filter=RouteID%20eq%20'68000L21432'&$top=30&$format=JSON";
+             String APIUrl = "https://traffic.transportdata.tw/MOTC/v1/Road/Traffic/Road/Taoyuan?$filter=RouteID%20eq%20'68000L21432'&$top=30&$format=JSON";
              // 申請的APPID
              // （FFFFFFFF-FFFF-FFFF-FFFF-FFFFFFFFFFFF 為 Guest
              // 帳號，以IP作為API呼叫限制，請替換為註冊的APPID & APPKey）
              String APPID = "MQA4ADYANQBmAGYAMwAwAC0AOAA5ADYAMgAtADQAYwBmADgALQBiADUAOQA0AC0ANABkADMAMQBlAGMAOQBiAGIAMAA4AGEA";
              // 申請的APPKey
              String APPKey = "ZgBmADUAZABhADEAZAA2AC0ANgA2ADQAMgAtADQAYwBmADkALQBiAGEAOABhAC0AOAAwAGMAMABhAGQAYgBlAGMANgAxADYA";
-
              // 取得當下的UTC時間，Java8有提供時間格式DateTimeFormatter.RFC_1123_DATE_TIME
              // 但是格式與C#有一點不同，所以只能自行定義
              String xdate = getServerTime();
@@ -485,7 +522,6 @@ public class MainActivity extends AppCompatActivity implements GoogleMap.OnMapCl
                  // TODO Auto-generated catch block
                  e1.printStackTrace();
              }
-
              System.out.println("Signature :" + Signature);
              String sAuth = "hmac username=\"" + APPID + "\", algorithm=\"hmac-sha1\", headers=\"x-date\", signature=\""
                      + Signature + "\"";
@@ -507,7 +543,6 @@ public class MainActivity extends AppCompatActivity implements GoogleMap.OnMapCl
                  respond = connection.getResponseCode() + " " + connection.getResponseMessage();
                  System.out.println("回傳狀態:" + respond);
                  BufferedReader in;
-
                  //判斷來源是否為gzip
                  if ("gzip".equals(connection.getContentEncoding())) {
                      InputStreamReader reader = new InputStreamReader(new GZIPInputStream(connection.getInputStream()));
@@ -516,7 +551,6 @@ public class MainActivity extends AppCompatActivity implements GoogleMap.OnMapCl
                      InputStreamReader reader = new InputStreamReader(connection.getInputStream());
                      in = new BufferedReader(reader);
                  }
-
                  // 返回的數據已經過解壓
                  StringBuffer buffer = new StringBuffer();
                  // 讀取回傳資料
@@ -525,18 +559,14 @@ public class MainActivity extends AppCompatActivity implements GoogleMap.OnMapCl
                      System.out.println(line);
                      buffer.append(line).append("\r\n");
                  }
-
                  in.close();
                  System.out.println(buffer.toString());
-
              } catch (ProtocolException e) {
                  e.printStackTrace();
              }
-
              catch (Exception e) {
                  e.printStackTrace();
              }
-         }
     }*/
 
     @RequiresApi(api = Build.VERSION_CODES.N)
@@ -787,7 +817,7 @@ public class MainActivity extends AppCompatActivity implements GoogleMap.OnMapCl
         }
         location = locationManager.getLastKnownLocation(provider);
         if (location != null) {
-            showLocation(googleMap,location);
+            showLocation(googleMap, location);
         } else {
             String info = "無法獲得當前位置";
             Toast.makeText(this, info, Toast.LENGTH_SHORT).show();
@@ -801,18 +831,21 @@ public class MainActivity extends AppCompatActivity implements GoogleMap.OnMapCl
         public void onStatusChanged(String provider, int status, Bundle extras) {
             // TODO Auto-generated method stub
         }
+
         @Override
         public void onProviderEnabled(String provider) {
             // TODO Auto-generated method stub
         }
+
         @Override
         public void onProviderDisabled(String provider) {
             // TODO Auto-generated method stub
         }
+
         @Override
         public void onLocationChanged(Location location) {
-            if(is_direction){
-                origin = String.valueOf((double) location.getLatitude()) + "," + String.valueOf((double)location.getLongitude());
+            if (is_direction) {
+                origin = String.valueOf((double) location.getLatitude()) + "," + String.valueOf((double) location.getLongitude());
                 String dest = address_dest.getText().toString();
                 String url = getDirectionsUrl(origin, dest);
                 mMap.clear();
@@ -820,7 +853,7 @@ public class MainActivity extends AppCompatActivity implements GoogleMap.OnMapCl
                 //Start downloading json data from Google Directions
                 //API
                 downloadTask.execute(url);
-                showLocation(mMap,location);
+                showLocation(mMap, location);
             }
 
 
@@ -834,6 +867,7 @@ public class MainActivity extends AppCompatActivity implements GoogleMap.OnMapCl
     }
 
     private final static String TAG = "MainActivity";
+
     @RequiresApi(api = Build.VERSION_CODES.M)
     @Override
     public void onRequestPermissionsResult(int requestCode, String[] permissions, int[] grantResults) {
