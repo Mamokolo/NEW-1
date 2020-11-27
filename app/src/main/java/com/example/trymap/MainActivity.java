@@ -70,6 +70,7 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.net.HttpURLConnection;
 import java.security.SignatureException;
+import java.sql.Timestamp;
 import java.util.ArrayList;
 import java.util.Calendar;
 import java.util.HashMap;
@@ -134,6 +135,12 @@ public class MainActivity extends AppCompatActivity implements GoogleMap.OnMapCl
     private boolean is_direction = false;
     Location location = null;
 
+
+    int sign=0;
+    int collect=0;
+    Timestamp time = new Timestamp(0);
+    Timestamp storeTime = new Timestamp(0);
+
     @RequiresApi(api = Build.VERSION_CODES.N)
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -157,8 +164,6 @@ public class MainActivity extends AppCompatActivity implements GoogleMap.OnMapCl
                 getSpeed();
             }
         });
-
-
         SupportMapFragment mapFragment = (SupportMapFragment) getSupportFragmentManager().findFragmentById(R.id.map2);
         assert mapFragment != null;
         mapFragment.getMapAsync(this);
@@ -167,6 +172,7 @@ public class MainActivity extends AppCompatActivity implements GoogleMap.OnMapCl
         mSensorManager = (SensorManager) getSystemService(Context.SENSOR_SERVICE);
         assert mSensorManager != null;
         Sensor mSensor = mSensorManager.getDefaultSensor(Sensor.TYPE_ACCELEROMETER);
+        Calendar c = Calendar.getInstance();
     }
 
     /**
@@ -261,22 +267,24 @@ public class MainActivity extends AppCompatActivity implements GoogleMap.OnMapCl
         //體感(Sensor)甩動力道速度公式
         mSpeed = Math.sqrt(mDeltaX * mDeltaX + mDeltaY * mDeltaY + mDeltaZ * mDeltaZ) / mTimeInterval * 10000;
 
+
         //若體感(Sensor)甩動速度大於等於甩動設定值則進入 (達到甩動力道及速度)
         if (mSpeed >= SPEED_SHRESHOLD) {
+            collect++;
+            //System.out.println(collect);
+            Calendar c = Calendar.getInstance();
+            time = new Timestamp(c.getTimeInMillis());
+            System.out.println(time.getTime()+" "+storeTime.getTime());
             //達到搖一搖甩動後要做的事
-            tts.speak("震動注意", TextToSpeech.QUEUE_FLUSH, null);//發音
-            alertInit();
-            try {
-                Thread.sleep(3000);
-            } catch (InterruptedException e) {
-                e.printStackTrace();
+            if(collect==1||time.getTime()-storeTime.getTime()>5000) {//跟上一次觸發間隔須超過五秒才會再觸發，避免顛頗路段不斷出現警訊
+                tts.speak("震動注意", TextToSpeech.QUEUE_FLUSH, null);//發音
+                DialogInit();
+                storeTime = time;
             }
-
         }
-
     }
 
-    public void alertInit() {
+    public void DialogInit() {
         AlertDialog.Builder alertDialog = new AlertDialog.Builder(MainActivity.this);
         alertDialog.setTitle("警告");
         alertDialog.setMessage("路面顛頗!!");
@@ -284,7 +292,7 @@ public class MainActivity extends AppCompatActivity implements GoogleMap.OnMapCl
         }));
         AlertDialog dialog = alertDialog.create();
         dialog.show();
-        dialog.getButton(AlertDialog.BUTTON_NEGATIVE).setOnClickListener((v -> {
+        dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener((v -> {
             setToast("確定");
             dialog.dismiss();
         }));
@@ -854,6 +862,10 @@ public class MainActivity extends AppCompatActivity implements GoogleMap.OnMapCl
                 //API
                 downloadTask.execute(url);
                 showLocation(mMap, location);
+                LatLng currentLoc = new LatLng(location.getLatitude(),location.getLongitude());
+                CameraPosition cameraPosition = new CameraPosition.Builder().target(currentLoc).zoom(17).build();
+                mMap.animateCamera(CameraUpdateFactory.newCameraPosition(cameraPosition));
+                System.out.println("ABCDE");
             }
 
 
