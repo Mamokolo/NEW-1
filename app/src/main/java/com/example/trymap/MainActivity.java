@@ -40,6 +40,8 @@ import android.hardware.SensorEvent;
 import android.hardware.SensorEventListener;
 import android.hardware.SensorManager;
 import android.location.LocationManager;
+import android.net.wifi.WifiInfo;
+import android.net.wifi.WifiManager;
 import android.os.AsyncTask;
 import android.os.Build;
 import android.os.Bundle;
@@ -56,6 +58,7 @@ import android.widget.Button;
 import android.widget.EditText;
 
 import com.google.android.gms.maps.UiSettings;
+import com.google.android.gms.maps.model.Polyline;
 import com.google.android.gms.maps.model.PolylineOptions;
 //speech import
 import android.speech.tts.TextToSpeech;
@@ -66,9 +69,14 @@ import android.location.Location;
 import android.location.LocationListener;
 import android.location.Address;
 
+import java.io.DataInputStream;
+import java.io.DataOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
+import java.io.PrintWriter;
 import java.net.HttpURLConnection;
+import java.net.ServerSocket;
+import java.net.Socket;
 import java.security.SignatureException;
 import java.sql.Timestamp;
 import java.util.ArrayList;
@@ -108,6 +116,10 @@ public class MainActivity extends AppCompatActivity implements GoogleMap.OnMapCl
     private Button speedtest, end_direction;
     private TextToSpeech tts;
     private LinearLayout layout;
+    private Polyline polyline;
+    private LocationManager locationManager = null;
+    public String provider;
+    public static final int MY_PERMISSION_ACCESS_COARSE_LOCATION = 11;
 //    private Location location;
 
     LatLng Taiwan = new LatLng(25.02, 121.32);
@@ -136,8 +148,8 @@ public class MainActivity extends AppCompatActivity implements GoogleMap.OnMapCl
     Location location = null;
 
 
-    int sign=0;
-    int collect=0;
+    int sign = 0;
+    int collect = 0;
     Timestamp time = new Timestamp(0);
     Timestamp storeTime = new Timestamp(0);
 
@@ -154,12 +166,14 @@ public class MainActivity extends AppCompatActivity implements GoogleMap.OnMapCl
         Button accidentB = findViewById(R.id.accident);
         layout = (LinearLayout) findViewById(R.id.linearlayout);
         end_direction = findViewById(R.id.end_direction);
+
         end_direction.setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View v) {
+                is_direction=false;
                 layout.setVisibility(View.VISIBLE);
                 end_direction.setVisibility(View.GONE);
-                mMap.clear();
+                polyline.remove();
                 getAccident();
                 getSpeed();
             }
@@ -192,13 +206,6 @@ public class MainActivity extends AppCompatActivity implements GoogleMap.OnMapCl
         address_dest.setText("目的地");
         if (checkPermissions()) {
             if (ActivityCompat.checkSelfPermission(this, Manifest.permission.ACCESS_FINE_LOCATION) != PackageManager.PERMISSION_GRANTED && ActivityCompat.checkSelfPermission(this, Manifest.permission.ACCESS_COARSE_LOCATION) != PackageManager.PERMISSION_GRANTED) {
-                // TODO: Consider calling
-                //    ActivityCompat#requestPermissions
-                // here to request the missing permissions, and then overriding
-                //   public void onRequestPermissionsResult(int requestCode, String[] permissions,
-                //                                          int[] grantResults)
-                // to handle the case where the user grants the permission. See the documentation
-                // for ActivityCompat#requestPermissions for more details.
                 return;
             }
             googlemap.setMyLocationEnabled(true);
@@ -271,15 +278,17 @@ public class MainActivity extends AppCompatActivity implements GoogleMap.OnMapCl
         //若體感(Sensor)甩動速度大於等於甩動設定值則進入 (達到甩動力道及速度)
         if (mSpeed >= SPEED_SHRESHOLD) {
             collect++;
-            //System.out.println(collect);
             Calendar c = Calendar.getInstance();
             time = new Timestamp(c.getTimeInMillis());
-            System.out.println(time.getTime()+" "+storeTime.getTime());
+            //System.out.println(time.getTime()+" "+storeTime.getTime());
             //達到搖一搖甩動後要做的事
-            if(collect==1||time.getTime()-storeTime.getTime()>5000) {//跟上一次觸發間隔須超過五秒才會再觸發，避免顛頗路段不斷出現警訊
+            if (collect == 1 || time.getTime() - storeTime.getTime() > 5000) {//跟上一次觸發間隔須超過五秒才會再觸發，避免顛頗路段不斷出現警訊
                 tts.speak("震動注意", TextToSpeech.QUEUE_FLUSH, null);//發音
                 DialogInit();
                 storeTime = time;
+                client b = new client();
+                String location_Now = String.valueOf((double) location.getLatitude()) + "," + String.valueOf((double) location.getLongitude());
+                b.execute(location_Now);
             }
         }
     }
@@ -328,16 +337,18 @@ public class MainActivity extends AppCompatActivity implements GoogleMap.OnMapCl
     @Override
     public void onMapClick(LatLng point) {
 
-       Geocoder geocoder = new Geocoder(this, Locale.getDefault());
-       try {
-            List<Address> ADDR = geocoder.getFromLocation(point.latitude, point.longitude, 1);
-            getAddress(ADDR);
+        try {
+            getAddress(point);
         } catch (IOException e) {
             e.printStackTrace();
         }
     }
 
-    String getAddress(List<Address> ADDR) {
+    public void getAddress(LatLng point) throws IOException {
+        Geocoder geocoder = new Geocoder(this, Locale.getDefault());
+        List<Address> ADDR = geocoder.getFromLocation(point.latitude, point.longitude, 1);
+        System.out.println(ADDR.get(0).getAddressLine(0));
+
         if (ADDR != null && ADDR.size() > 0) {
             Address address = ADDR.get(0);
             String addressText = String.format("%s-%s%s%s%s",
@@ -347,10 +358,9 @@ public class MainActivity extends AppCompatActivity implements GoogleMap.OnMapCl
                     address.getThoroughfare(), //路
                     address.getSubThoroughfare() //巷號
             );
-            return addressText;
-//            tts.speak(addressText, TextToSpeech.QUEUE_FLUSH, null);//發音
+           // tts.speak(, TextToSpeech.QUEUE_FLUSH, null);//發音
         }
-        return null;
+
     }
 
     void getAccident() {
@@ -418,11 +428,11 @@ public class MainActivity extends AppCompatActivity implements GoogleMap.OnMapCl
 
 
     public void ButtonClick(View view) throws IOException {
-
+        Location locC;
         if (mMap == null) {
             return;
         }
-        mMap.clear();
+        /*
         final Dialog dialog = ProgressDialog.show(this, "計算路徑", "計算中");
         new Handler().postDelayed(new Runnable() {
             @Override
@@ -430,30 +440,27 @@ public class MainActivity extends AppCompatActivity implements GoogleMap.OnMapCl
                 dialog.dismiss();
             }
         }, 1500);
+        */
         origin = address_origin.getText().toString();
         String dest = address_dest.getText().toString();
 
-        if (origin.equals("現在位置")) {
-            if (ActivityCompat.checkSelfPermission(this, Manifest.permission.ACCESS_FINE_LOCATION) != PackageManager.PERMISSION_GRANTED && ActivityCompat.checkSelfPermission(this, Manifest.permission.ACCESS_COARSE_LOCATION) != PackageManager.PERMISSION_GRANTED) {
-                // TODO: Consider calling
-                //    ActivityCompat#requestPermissions
-                // here to request the missing permissions, and then overriding
-                //   public void onRequestPermissionsResult(int requestCode, String[] permissions,
-                //                                          int[] grantResults)
-                // to handle the case where the user grants the permission. See the documentation
-                // for ActivityCompat#requestPermissions for more details.
-                return;
-            }
-            location = locationManager.getLastKnownLocation(provider);
-            Geocoder geoCoder = new Geocoder(this, Locale.getDefault());
-            List<Address> lstAddress = geoCoder.getFromLocation((double) location.getLatitude(), (double) location.getLongitude(), 1);
-            String returnAddress = lstAddress.get(0).getAddressLine(0);
-            origin = returnAddress;
-            LatLng currentLoc = new LatLng(location.getLatitude(),location.getLongitude());
-            //System.out.println("進來啦!");
-            //System.out.println(origin);
-            if (!dest.equals("目的地")) {
-                System.out.println(origin);
+        if (dest.equals("目的地")) {
+
+        } else {
+            if (origin.equals("現在位置")) {
+                if (ActivityCompat.checkSelfPermission(this, Manifest.permission.ACCESS_FINE_LOCATION) != PackageManager.PERMISSION_GRANTED && ActivityCompat.checkSelfPermission(this, Manifest.permission.ACCESS_COARSE_LOCATION) != PackageManager.PERMISSION_GRANTED) {
+                    return;
+                }
+                locC = locationManager.getLastKnownLocation(locationManager.NETWORK_PROVIDER);
+                Geocoder geoCoder = new Geocoder(this, Locale.getDefault());
+                List<Address> lstAddress = geoCoder.getFromLocation((double) locC.getLatitude(), (double) locC.getLongitude(), 1);
+                String returnAddress = lstAddress.get(0).getAddressLine(0);
+                origin = returnAddress;
+                LatLng currentLoc = new LatLng(locC.getLatitude(), locC.getLongitude());
+                System.out.println(returnAddress);
+
+                System.out.println(origin+" "+dest);
+
                 String url = getDirectionsUrl(origin, dest);
                 DownloadTask downloadTask = new DownloadTask();
                 //Start downloading json data from Google Directions
@@ -464,25 +471,25 @@ public class MainActivity extends AppCompatActivity implements GoogleMap.OnMapCl
                 is_direction = true;
                 CameraPosition cameraPosition = new CameraPosition.Builder().target(currentLoc).zoom(17).build();
                 mMap.animateCamera(CameraUpdateFactory.newCameraPosition(cameraPosition));
+
+            }
+            else  {
+                Geocoder geoCoder = new Geocoder(this, Locale.getDefault());
+                List<Address> currentLoc = geoCoder.getFromLocationName(origin, 1);
+                System.out.println(origin+" "+dest);
+                String url = getDirectionsUrl(origin, dest);
+                DownloadTask downloadTask = new DownloadTask();
+                //Start downloading json data from Google Directions
+                //API
+                downloadTask.execute(url);
+                layout.setVisibility(View.GONE);
+                end_direction.setVisibility(View.VISIBLE);
+                is_direction = true;
+                LatLng CP = new LatLng(currentLoc.get(0).getLatitude(), currentLoc.get(0).getLongitude());
+                CameraPosition cameraPosition = new CameraPosition.Builder().target(CP).zoom(17).build();
+                mMap.animateCamera(CameraUpdateFactory.newCameraPosition(cameraPosition));
             }
         }
-        else if (!dest.equals("目的地")) {
-            Geocoder geoCoder = new Geocoder(this, Locale.getDefault());
-            List<Address> currentLoc = geoCoder.getFromLocationName(origin, 1);
-            System.out.println(origin);
-            String url = getDirectionsUrl(origin, dest);
-            DownloadTask downloadTask = new DownloadTask();
-            //Start downloading json data from Google Directions
-            //API
-            downloadTask.execute(url);
-            layout.setVisibility(View.GONE);
-            end_direction.setVisibility(View.VISIBLE);
-            is_direction = true;
-            LatLng CP = new LatLng(currentLoc.get(0).getLatitude(),currentLoc.get(0).getLongitude());
-            CameraPosition cameraPosition = new CameraPosition.Builder().target(CP).zoom(17).build();
-            mMap.animateCamera(CameraUpdateFactory.newCameraPosition(cameraPosition));
-        }
-
 
     }
     //易肇事路段顯示隱藏
@@ -593,7 +600,7 @@ public class MainActivity extends AppCompatActivity implements GoogleMap.OnMapCl
         String str_dest = "destination=" + dest;
 
         // Sensor enabled
-        String key = "key=AIzaSyB6U_yNrQmuqJhts2V1Y5CQWhkYYQ2s3uo";
+        String key = "key="+getResources().getString(R.string.google_maps_key);
 
         // Building the parameters to the web service
         String parameters = str_origin + "&" + str_dest + "&" + key;
@@ -607,6 +614,77 @@ public class MainActivity extends AppCompatActivity implements GoogleMap.OnMapCl
 
         return url;
     }
+
+    class MyServer implements Runnable
+    {
+        ServerSocket ss;
+        Socket mysocket;
+        DataInputStream dis;
+        String message;
+        Handler handler = new Handler();
+
+        @Override
+        public void run() {
+            try {
+                ss = new ServerSocket(9700);
+                handler.post(new Runnable() {
+                    @Override
+                    public void run() {
+                        Toast.makeText(getApplicationContext(),"waiting for client: "+ message, Toast.LENGTH_SHORT).show();
+                    }
+                });
+                while(true){
+                    mysocket = ss.accept();
+                    dis = new DataInputStream(mysocket.getInputStream());
+                    message = dis.readUTF();
+                    handler.post(new Runnable() {
+                        @Override
+                        public void run() {
+                            Toast.makeText(getApplicationContext(),"message received from client: "+ message, Toast.LENGTH_SHORT).show();
+                        }
+                    });
+                }
+            } catch (IOException e) {
+                e.printStackTrace();
+            }
+        }
+    }
+
+    class client extends AsyncTask<String,Void,Void> {
+        Socket s;
+        DataOutputStream dos;
+        PrintWriter pw;
+        @Override
+        protected Void doInBackground(String... voids) {
+            String message = voids[0];
+
+            try {
+                s = new Socket("192.168.43.12",1234);
+                pw = new PrintWriter(s.getOutputStream());
+                pw.write(message);
+                pw.flush();
+                pw.close();
+                s.close();
+            } catch (IOException e) {
+                e.printStackTrace();
+            }
+            return null;
+        }
+    }
+
+    //我的IP
+    private String getMyIp(){
+        //新增一個WifiManager物件並取得WIFI_SERVICE
+        WifiManager wifi_service = (WifiManager)getApplicationContext().getSystemService(WIFI_SERVICE);
+        //取得wifi資訊
+        WifiInfo wifiInfo = wifi_service.getConnectionInfo();
+        //取得IP，但這會是一個詭異的數字，還要再自己換算才行
+        int ipAddress = wifiInfo.getIpAddress();
+        //利用位移運算和AND運算計算IP
+        String ip = String.format("%d.%d.%d.%d",(ipAddress & 0xff),(ipAddress >> 8 & 0xff),(ipAddress >> 16 & 0xff),(ipAddress >> 24 & 0xff));
+        return ip;
+    }
+
 
 
     private class DownloadTask extends AsyncTask<String, Void, String> {
@@ -632,9 +710,7 @@ public class MainActivity extends AppCompatActivity implements GoogleMap.OnMapCl
         @Override
         protected void onPostExecute(String result) {
             super.onPostExecute(result);
-
             ParserTask parserTask = new ParserTask();
-
             // Invokes the thread for parsing the JSON data
             parserTask.execute(result);
 
@@ -706,18 +782,16 @@ public class MainActivity extends AppCompatActivity implements GoogleMap.OnMapCl
         // Executes in UI thread, after the parsing process
         @Override
         protected void onPostExecute(List<List<HashMap<String, String>>> result) {
-            ArrayList<LatLng> points = null;
-            PolylineOptions lineOptions = null;
+            ArrayList<LatLng> points = new ArrayList<LatLng>();
+            PolylineOptions lineOptions = new PolylineOptions();
+            lineOptions.width(10);  //導航路徑寬度
+            lineOptions.color(Color.BLUE); //導航路徑顏色
             MarkerOptions markerOptions = new MarkerOptions();
-
-            // Traversing through all the routes
+            System.out.println(result);
             for (int i = 0; i < result.size(); i++) {
-                points = new ArrayList<LatLng>();
-                lineOptions = new PolylineOptions();
 
-                // Fetching i-th route
+                System.out.println("Draw");
                 List<HashMap<String, String>> path = result.get(i);
-
                 // Fetching all the points in i-th route
                 for (int j = 0; j < path.size(); j++) {
                     HashMap<String, String> point = path.get(j);
@@ -731,11 +805,8 @@ public class MainActivity extends AppCompatActivity implements GoogleMap.OnMapCl
 
                 // Adding all the points in the route to LineOptions
                 lineOptions.addAll(points);
-                lineOptions.width(5);  //導航路徑寬度
-                lineOptions.color(Color.BLUE); //導航路徑顏色
 
             }
-
             // Drawing polyline in the Google Map for the i-th route
             mMap.addPolyline(lineOptions);
         }
@@ -755,14 +826,14 @@ public class MainActivity extends AppCompatActivity implements GoogleMap.OnMapCl
 
             // Permission is not granted
             // Should we show an explanation?
-            if (ActivityCompat.shouldShowRequestPermissionRationale(this,
+            if (ActivityCompat.shouldShowRequestPermissionRationale(MainActivity.this,
                     Manifest.permission.ACCESS_FINE_LOCATION)) {
                 // Show an explanation to the user *asynchronously* -- don't block
                 // this thread waiting for the user's response! After the user
                 // sees the explanation, try again to request the permission.
             } else {
                 // No explanation needed; request the permission
-                ActivityCompat.requestPermissions(this,
+                ActivityCompat.requestPermissions(MainActivity.this,
                         new String[]{Manifest.permission.ACCESS_FINE_LOCATION},
                         MY_PERMISSIONS_REQUEST_ACCESS_FINE_LOCATION);
                 // MY_PERMISSIONS_REQUEST_READ_CONTACTS is an
@@ -779,14 +850,14 @@ public class MainActivity extends AppCompatActivity implements GoogleMap.OnMapCl
 
             // Permission is not granted
             // Should we show an explanation?
-            if (ActivityCompat.shouldShowRequestPermissionRationale(this,
+            if (ActivityCompat.shouldShowRequestPermissionRationale(MainActivity.this,
                     Manifest.permission.ACCESS_COARSE_LOCATION)) {
                 // Show an explanation to the user *asynchronously* -- don't block
                 // this thread waiting for the user's response! After the user
                 // sees the explanation, try again to request the permission.
             } else {
                 // No explanation needed; request the permission
-                ActivityCompat.requestPermissions(this,
+                ActivityCompat.requestPermissions(MainActivity.this,
                         new String[]{Manifest.permission.ACCESS_COARSE_LOCATION},
                         MY_PERMISSIONS_REQUEST_ACCESS_COARSE_LOCATION);
                 // MY_PERMISSIONS_REQUEST_READ_CONTACTS is an
@@ -800,8 +871,6 @@ public class MainActivity extends AppCompatActivity implements GoogleMap.OnMapCl
         return ACCESS_FINE_LOCATION && ACCESS_COARSE_LOCATION;
     }
 
-    private LocationManager locationManager = null;
-    private String provider;
 
     @RequiresApi(api = Build.VERSION_CODES.M)
     public void init(GoogleMap googleMap) {
@@ -811,7 +880,6 @@ public class MainActivity extends AppCompatActivity implements GoogleMap.OnMapCl
         System.out.println();
         if (providerList.contains(LocationManager.GPS_PROVIDER)) {
             provider = LocationManager.GPS_PROVIDER;
-            System.out.println(origin);
         } else if (providerList.contains(LocationManager.NETWORK_PROVIDER)) {
             provider = LocationManager.NETWORK_PROVIDER;
         } else {
@@ -825,6 +893,7 @@ public class MainActivity extends AppCompatActivity implements GoogleMap.OnMapCl
         }
         location = locationManager.getLastKnownLocation(provider);
         if (location != null) {
+            System.out.println("123456");
             showLocation(googleMap, location);
         } else {
             String info = "無法獲得當前位置";
@@ -856,16 +925,19 @@ public class MainActivity extends AppCompatActivity implements GoogleMap.OnMapCl
                 origin = String.valueOf((double) location.getLatitude()) + "," + String.valueOf((double) location.getLongitude());
                 String dest = address_dest.getText().toString();
                 String url = getDirectionsUrl(origin, dest);
-                mMap.clear();
+                polyline.remove();
                 DownloadTask downloadTask = new DownloadTask();
                 //Start downloading json data from Google Directions
                 //API
                 downloadTask.execute(url);
                 showLocation(mMap, location);
-                LatLng currentLoc = new LatLng(location.getLatitude(),location.getLongitude());
+
+                LatLng currentLoc = new LatLng(location.getLatitude(), location.getLongitude());
                 CameraPosition cameraPosition = new CameraPosition.Builder().target(currentLoc).zoom(17).build();
                 mMap.animateCamera(CameraUpdateFactory.newCameraPosition(cameraPosition));
-                System.out.println("ABCDE");
+            }
+            else{
+                polyline.remove();
             }
 
 
